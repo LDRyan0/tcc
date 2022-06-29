@@ -194,23 +194,23 @@ template <typename T> struct FetchData
   __device__ void load(const Samples samples, unsigned channel, unsigned time, unsigned firstReceiver, bool skipLoadCheck = NR_RECEIVERS % NR_RECEIVERS_PER_BLOCK == 0)
   {
     if (skipLoadCheck || firstReceiver + loadRecv < NR_RECEIVERS)
-      //data = * (T *) &samples[channel][time][firstReceiver + loadRecv][loadPol][loadTime];
-      memcpy(&data, &samples[channel][time][firstReceiver + loadRecv][loadPol][loadTime], sizeof(T));
+      data = * (T *) &samples[channel][time][firstReceiver + loadRecv][loadPol][loadTime];
+      //memcpy(&data, &samples[channel][time][firstReceiver + loadRecv][loadPol][loadTime], sizeof(T));
   }
 
   template <typename SharedData> __device__ void storeA(SharedData samples) const
   {
-    //* ((T *) &samples[loadRecv][loadPol][loadTime][0]) = data;
-    memcpy(&samples[loadRecv][loadPol][loadTime][0], &data, sizeof(T));
+    * ((T *) &samples[loadRecv][loadPol][loadTime][0]) = data;
+    //memcpy(&samples[loadRecv][loadPol][loadTime][0], &data, sizeof(T));
   }
 
   template <typename SharedData> __device__ void storeB(SharedData samples) const
   {
-    //* ((T *) &samples[loadRecv][loadPol][0][loadTime][0]) = data;
-    //* ((T *) &samples[loadRecv][loadPol][1][loadTime][0]) = conj_perm(data);
-    T tmp = conj_perm(data);
-    memcpy(&samples[loadRecv][loadPol][0][loadTime][0], &data, sizeof(T));
-    memcpy(&samples[loadRecv][loadPol][1][loadTime][0], &tmp, sizeof(T));
+    * ((T *) &samples[loadRecv][loadPol][0][loadTime][0]) = data;
+    * ((T *) &samples[loadRecv][loadPol][1][loadTime][0]) = conj_perm(data);
+    //T tmp = conj_perm(data);
+    //memcpy(&samples[loadRecv][loadPol][0][loadTime][0], &data, sizeof(T));
+    //memcpy(&samples[loadRecv][loadPol][1][loadTime][0], &tmp, sizeof(T));
   }
 
 #if defined ASYNC_COPIES
@@ -228,11 +228,11 @@ template <typename T> struct FetchData
 
   template<typename Bsamples> __device__ void fixB(Bsamples bSamples)
   {
-    //* ((T *) &bSamples[loadRecv][loadPol][1][loadTime][0]) = conj_perm(* ((T *) &bSamples[loadRecv][loadPol][0][loadTime][0]));
-    T tmp;
-    memcpy(&tmp, &bSamples[loadRecv][loadPol][0][loadTime][0], sizeof(T));
-    tmp = conj_perm(tmp);
-    memcpy(&bSamples[loadRecv][loadPol][1][loadTime][0], &tmp, sizeof(T));
+    * ((T *) &bSamples[loadRecv][loadPol][1][loadTime][0]) = conj_perm(* ((T *) &bSamples[loadRecv][loadPol][0][loadTime][0]));
+    //T tmp;
+    //memcpy(&tmp, &bSamples[loadRecv][loadPol][0][loadTime][0], sizeof(T));
+    //tmp = conj_perm(tmp);
+    //memcpy(&bSamples[loadRecv][loadPol][1][loadTime][0], &tmp, sizeof(T));
   }
 #endif
 
@@ -438,13 +438,13 @@ template <bool fullTriangle> __device__ void doCorrelateTriangle(Visibilities vi
 	}
       } else {
 	for (unsigned z = 0, i = 0; z < 3; z ++) {
-	  for (unsigned x = 0; x < nrFragmentsX; x ++)
+	  for (unsigned x = 0; x < 16 / NR_RECEIVERS_PER_TCM_X; x ++)
 	    load_matrix_sync(bFrag[x], &bSamples[buffer][/*recvXoffset*/ 24 * z + NR_RECEIVERS_PER_TCM_X * x][0][0][minorTime][0], sizeof(bSamples[0][0][0][0]) * 8 / NR_BITS);
 
 	  for (unsigned y = 0; y < 2; y ++) {
 	    load_matrix_sync(aFrag, &bSamples[buffer][/*recvYoffset*/ 24 * z + NR_RECEIVERS_PER_TCM_Y * y][0][0][minorTime][0], sizeof(bSamples[0][0][0]) * 8 / NR_BITS);
 
-	    for (unsigned x = 0; x < (NR_BITS == 4 ? 4 : 2) * (y + 1); x ++, i ++)
+	    for (unsigned x = 0; x < 8 * (y + 1) / NR_RECEIVERS_PER_TCM_X; x ++, i ++)
 	      mma_sync(sum[i], aFrag, bFrag[x], sum[i]);
 	  }
 	}
@@ -666,4 +666,13 @@ void correlate(Visibilities visibilities, const Samples samples)
 #endif
   else
     doCorrelateRectangle<nrFragmentsY, true, true, true, true>(visibilities, samples, firstReceiverY, firstReceiverX, u.rectangle.aSamples, u.rectangle.bSamples, u.scratchSpace);
+
+#if 0
+  if (threadIdx.x == 0 && threadIdx.y == 0 && threadIdx.z == 0) {
+    //((uint64_t *) visibilities)[blockIdx. y * 81 + blockIdx.x] = clock64();
+    unsigned sm;
+    asm("mov.u32 %0, %smid;" : "=r"(sm) );
+    printf("block %u channel %u sm %u at %llu\n", blockIdx.x, blockIdx.y, sm, clock64());
+  }
+#endif
 }
