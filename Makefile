@@ -1,9 +1,9 @@
 VERSION=		0.5
 CUDA=			$(shell dirname `dirname \`which nvcc\``)
 #CUDA=			/usr/local/cuda
-CUDA_INCLUDE=		$(shell dirname `find $(CUDA) -name cuda.h`)
-CUDA_LIBDIR=		$(shell dirname `find $(CUDA) -name libcuda.so`|head -n1)
-NVRTC_LIBDIR=		$(shell dirname `find $(CUDA) -name libnvrtc.so`|head -n1)
+CUDA_INCLUDE=		$(shell dirname `find $(CUDA)/ -name cuda.h`)
+CUDA_LIBDIR=		$(shell dirname `find $(CUDA)/ -name libcuda.so`|head -n1)
+NVRTC_LIBDIR=		$(shell dirname `find $(CUDA)/ -name libnvrtc.so`|head -n1)
 #POWER_SENSOR=		$(HOME)/projects/libpowersensor-master/build
 ARCH=			$(shell arch)
 CC=			gcc
@@ -48,8 +48,11 @@ SHARED_OBJECTS=		libtcc/libtcc.so libtcc/libtcc.so.$(VERSION)
 DEPENDENCIES=		$(OBJECTS:%.o=%.d)
 
 EXECUTABLES=		test/SimpleExample/SimpleExample\
-			test/CorrelatorTest/CorrelatorTest\
-			test/OpenCLCorrelatorTest/OpenCLCorrelatorTest
+			test/CorrelatorTest/CorrelatorTest
+
+ifneq			("$(wildcard $(CUDA_INCLUDE)/CL/cl.hpp)", "")
+EXECUTABLES+=		test/OpenCLCorrelatorTest/OpenCLCorrelatorTest
+endif
 
 CUDA_WRAPPERS_DIR=       external/cuda-wrappers
 CUDA_WRAPPERS_LIB=        $(CUDA_WRAPPERS_DIR)/libcu.so
@@ -84,11 +87,10 @@ LIBRARIES=		-L$(CUDA_LIBDIR) -lcuda\
 all::			$(EXECUTABLES)
 
 clean::
-			$(RM) $(OBJECTS) $(SHARED_OBJECTS) $(DEPENDENCIES) $(EXECUTABLES)
+			rm -rf $(OBJECTS) $(SHARED_OBJECTS) $(DEPENDENCIES) $(EXECUTABLES) $(CUDA_WRAPPERS_DIR)/CMakeCache.txt $(CUDA_WRAPPERS_DIR)/CMakeFiles $(CUDA_WRAPPERS_DIR)/libcu.so
 
 $(CUDA_WRAPPERS_LIB):
-			cd $(CUDA_WRAPPERS_DIR) && cmake .
-			cd $(CUDA_WRAPPERS_DIR) && CPATH=$(CPATH):$(CUDA_INCLUDE) make
+			cd $(CUDA_WRAPPERS_DIR) && cmake . && CPATH=$(CPATH):$(CUDA_INCLUDE) make
 
 libtcc/TCCorrelator.o:	libtcc/TCCorrelator.cu	# CUDA code embedded in object file
 			ld -r -b binary -o $@ $<
