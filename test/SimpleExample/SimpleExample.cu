@@ -66,7 +66,7 @@ int main()
     correlator.launchAsync((CUstream) stream, (CUdeviceptr) visibilities, (CUdeviceptr) samples);
     checkCudaCall(cudaDeviceSynchronize());
 
-    std::cout << ((*visibilities)[160][87745][0][0] == Visibility(23, -2) ? "success" : "failed") << std::endl;
+    std::cout << ((*visibilities)[160][87745][0][0] == Visibility(23, 2) ? "success" : "failed") << std::endl;
 
     checkCudaCall(cudaFree(visibilities));
     checkCudaCall(cudaFree(samples));

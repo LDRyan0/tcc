@@ -186,25 +186,25 @@ template<typename SampleType, typename VisibilityType> void CorrelatorTest::veri
       for (unsigned major_time = 0; major_time < options.nrSamplesPerChannel / options.nrTimesPerBlock; major_time ++) {
 	multi_array::array_ref<SampleType, 3> ref = samples[channel][major_time];
 
-	for (unsigned recv1 = 0, baseline = 0; recv1 < options.nrReceivers; recv1 ++)
-	  for (unsigned recv0 = 0; recv0 <= recv1; recv0 ++, baseline ++)
+	for (unsigned recvX = 0, baseline = 0; recvX < options.nrReceivers; recvX ++)
+	  for (unsigned recvY = 0; recvY <= recvX; recvY ++, baseline ++)
 	    for (unsigned minor_time = 0; minor_time < options.nrTimesPerBlock; minor_time ++)
-	      for (unsigned pol0 = 0; pol0 < options.nrPolarizations; pol0 ++)
-		for (unsigned pol1 = 0; pol1 < options.nrPolarizations; pol1 ++) {
-		  SampleType sample0 = ref[recv0][pol0][minor_time];
-		  SampleType sample1 = ref[recv1][pol1][minor_time];
+	      for (unsigned polY = 0; polY < options.nrPolarizations; polY ++)
+		for (unsigned polX = 0; polX < options.nrPolarizations; polX ++) {
+		  SampleType sampleY = ref[recvY][polY][minor_time];
+		  SampleType sampleX = ref[recvX][polX][minor_time];
 
-		  sum[baseline][pol1][pol0] += VisibilityType(sample1.real(), sample1.imag()) * conj(VisibilityType(sample0.real(), sample0.imag()));
+		  sum[baseline][polY][polX] += VisibilityType(sampleY.real(), sampleY.imag()) * conj(VisibilityType(sampleX.real(), sampleX.imag()));
 		}
       }
 
       for (unsigned baseline = 0; baseline < options.nrBaselines(); baseline ++)
-	for (unsigned pol0 = 0; pol0 < options.nrPolarizations; pol0 ++)
-	  for (unsigned pol1 = 0; pol1 < options.nrPolarizations; pol1 ++)
-	    if (!approximates(visibilities[channel][baseline][pol1][pol0], sum[baseline][pol1][pol0]) && ++ count < 100)
+	for (unsigned polY = 0; polY < options.nrPolarizations; polY ++)
+	  for (unsigned polX = 0; polX < options.nrPolarizations; polX ++)
+	    if (!approximates(visibilities[channel][baseline][polY][polX], sum[baseline][polY][polX]) && ++ count < 100)
 #pragma omp critical (cout)
 	      ep([&] () {
-		std::cout << "visibilities[" << channel << "][" << baseline << "][" << pol1 << "][" << pol0 << "], expected " << sum[baseline][pol1][pol0] << ", got " << visibilities[channel][baseline][pol1][pol0] << std::endl;
+		std::cout << "visibilities[" << channel << "][" << baseline << "][" << polY << "][" << polX << "], expected " << sum[baseline][polY][polX] << ", got " << visibilities[channel][baseline][polY][polX] << std::endl;
 	      });
     });
 
@@ -212,11 +212,11 @@ template<typename SampleType, typename VisibilityType> void CorrelatorTest::veri
 #else
   for (unsigned channel = 0; channel < options.nrChannels; channel ++)
     for (unsigned baseline = 0; baseline < options.nrBaselines(); baseline ++)
-      for (unsigned pol0 = 0; pol0 < options.nrPolarizations; pol0 ++)
-	for (unsigned pol1 = 0; pol1 < options.nrPolarizations; pol1 ++)
-	    if (visibilities[channel][baseline][pol0][pol1] != (VisibilityType)(0, 0))
+      for (unsigned polY = 0; polY < options.nrPolarizations; polY ++)
+	for (unsigned polX = 0; polX < options.nrPolarizations; polX ++)
+	    if (visibilities[channel][baseline][polY][polX] != (VisibilityType)(0, 0))
 	      if (count ++ < 10)
-		std::cout << "visibilities[" << channel << "][" << baseline << "][" << pol0 << "][" << pol1 << "] = " << visibilities[channel][baseline][pol0][pol1] << std::endl;
+		std::cout << "visibilities[" << channel << "][" << baseline << "][" << polY << "][" << polX << "] = " << visibilities[channel][baseline][polY][polX] << std::endl;
 #endif
 }
 

@@ -22,6 +22,10 @@
 #include <omp.h>
 #include <sys/types.h>
 
+#if NR_BITS == 16
+#include <cuda_fp16.h> // we do not use code, only the __half type
+#endif
+
 #define __CL_ENABLE_EXCEPTIONS
 #include <CL/cl.hpp>
 #include <CL/cl_ext.h>
@@ -348,32 +352,40 @@ void checkTestPattern(cl::CommandQueue &queue, cl::Buffer &visibilitiesBuffer, c
     memset(sum, 0, sizeof sum);
 
     for (unsigned major_time = 0; major_time < NR_SAMPLES_PER_CHANNEL / NR_TIMES_PER_BLOCK; major_time ++)
-      for (unsigned recv1 = 0, baseline = 0; recv1 < NR_RECEIVERS; recv1 ++)
-        for (unsigned recv0 = 0; recv0 <= recv1; recv0 ++, baseline ++)
+      for (unsigned recvX = 0, baseline = 0; recvX < NR_RECEIVERS; recvX ++)
+        for (unsigned recvY = 0; recvY <= recvX; recvY ++, baseline ++)
           for (unsigned minor_time = 0; minor_time < NR_TIMES_PER_BLOCK; minor_time ++)
-            for (unsigned pol0 = 0; pol0 < NR_POLARIZATIONS; pol0 ++)
-              for (unsigned pol1 = 0; pol1 < NR_POLARIZATIONS; pol1 ++)
+            for (unsigned polY = 0; polY < NR_POLARIZATIONS; polY ++)
+              for (unsigned polX = 0; polX < NR_POLARIZATIONS; polX ++) {
+		Sample sampleY = samples[channel][major_time][recvY][polY][minor_time];
+		Sample sampleX = samples[channel][major_time][recvX][polX][minor_time];
+
+		sum[baseline][polY][polX] += Visibility(sampleY.real(), sampleY.imag()) * conj(Visibility(sampleX.real(), sampleX.imag()));
+#if 0
 #if NR_BITS == 4 || NR_BITS == 8
-                sum[baseline][pol1][pol0] += (std::complex<int32_t>) samples[channel][major_time][recv1][pol1][minor_time] * conj((std::complex<int32_t>) samples[channel][major_time][recv0][pol0][minor_time]);
+                sum[baseline][polY][polX] += (std::complex<int32_t>) samples[channel][major_time][recvY][polY][minor_time] * conj((std::complex<int32_t>) samples[channel][major_time][recvX][polX][minor_time]);
 #elif NR_BITS == 16
-                sum[baseline][pol1][pol0] += samples[channel][major_time][recv1][pol1][minor_time] * conj(samples[channel][major_time][recv0][pol0][minor_time]);
+                //sum[baseline][polY][polX] += (std::complex<float>) samples[channel][major_time][recvY][polY][minor_time] * conj((std::complex<float>) samples[channel][major_time][recvX][polX][minor_time]);
+                sum[baseline][polY][polX] += (std::complex<float>) samples[channel][major_time][recvY][polY][minor_time] * conj((std::complex<float>) samples[channel][major_time][recvX][polX][minor_time]);
 #endif
+#endif
+	      }
 
     for (unsigned baseline = 0; baseline < NR_BASELINES; baseline ++)
-      for (unsigned pol0 = 0; pol0 < NR_POLARIZATIONS; pol0 ++)
-        for (unsigned pol1 = 0; pol1 < NR_POLARIZATIONS; pol1 ++)
+      for (unsigned polY = 0; polY < NR_POLARIZATIONS; polY ++)
+        for (unsigned polX = 0; polX < NR_POLARIZATIONS; polX ++)
 #if NR_BITS == 4 || NR_BITS == 8
-          if (visibilities[channel][baseline][pol1][pol0] != sum[baseline][pol1][pol0] && ++ count < 10)
+          if (visibilities[channel][baseline][polY][polX] != sum[baseline][polY][polX] && ++ count < 10)
 #pragma omp critical (cout)
-            std::cout << "visibilities[" << channel << "][" << baseline << "][" << pol1 << "][" << pol0 << "], expected " << sum[baseline][pol1][pol0] << ", got " << visibilities[channel][baseline][pol1][pol0] << std::endl;
+            std::cout << "visibilities[" << channel << "][" << baseline << "][" << polY << "][" << polX << "], expected " << sum[baseline][polY][polX] << ", got " << visibilities[channel][baseline][polY][polX] << std::endl;
 #elif NR_BITS == 16
-          float absolute = abs(visibilities[channel][baseline][pol1][pol0] - sum[baseline][pol1][pol0]);
-          float relative = abs(visibilities[channel][baseline][pol1][pol0] / sum[baseline][pol1][pol0]);
-                                                                        195,1         83%
+	  {
+	    float absolute = abs(visibilities[channel][baseline][polY][polX] - sum[baseline][polY][polX]);
+	    float relative = abs(visibilities[channel][baseline][polY][polX] / sum[baseline][polY][polX]);
 
-
-          if ((relative < .999 || relative > 1.001) && absolute > .0001 * NR_SAMPLES_PER_CHANNEL && ++ count < 10)
-              std::cout << "visibilities[" << channel << "][" << baseline << "][" << pol1 << "][" << pol0 << "], expected " << sum[baseline][pol1][pol0] << ", got " << visibilities[channel][baseline][pol1][pol0] << ", relative = " << relative << ", absolute = " << absolute << std::endl;
+	    if ((relative < .999 || relative > 1.001) && absolute > .0001 * NR_SAMPLES_PER_CHANNEL && ++ count < 10)
+		std::cout << "visibilities[" << channel << "][" << baseline << "][" << polY << "][" << polX << "], expected " << sum[baseline][polY][polX] << ", got " << visibilities[channel][baseline][polY][polX] << ", relative = " << relative << ", absolute = " << absolute << std::endl;
+	  }
 #endif
     delete &sum;
   }
@@ -384,16 +396,16 @@ void checkTestPattern(cl::CommandQueue &queue, cl::Buffer &visibilitiesBuffer, c
 #else
   for (unsigned channel = 0; channel < NR_CHANNELS; channel ++)
     for (unsigned baseline = 0; baseline < NR_BASELINES; baseline ++)
-      for (unsigned pol0 = 0; pol0 < NR_POLARIZATIONS; pol0 ++)
-        for (unsigned pol1 = 0; pol1 < NR_POLARIZATIONS; pol1 ++)
+      for (unsigned polY = 0; polY < NR_POLARIZATIONS; polY ++)
+        for (unsigned polX = 0; polX < NR_POLARIZATIONS; polX ++)
 #if NR_BITS == 4 || NR_BITS == 8
-            if (visibilities[channel][baseline][pol0][pol1] != std::complex<int32_t>(0, 0))
+            if (visibilities[channel][baseline][polY][polX] != std::complex<int32_t>(0, 0))
 #elif NR_BITS == 16
-            if (visibilities[channel][baseline][pol0][pol1] != std::complex<float>(0.0f, 0.0f))
+            if (visibilities[channel][baseline][polY][polX] != std::complex<float>(0.0f, 0.0f))
 #endif
               if (count ++ < 10)
 #pragma omp critical (cout)
-                std::cout << "visibilities[" << channel << "][" << baseline << "][" << pol0 << "][" << pol1 << "] = " << visibilities[channel][baseline][pol0][pol1] << std::endl;
+                std::cout << "visibilities[" << channel << "][" << baseline << "][" << polY << "][" << polX << "] = " << visibilities[channel][baseline][polY][polX] << std::endl;
 #endif
 
   queue.enqueueUnmapMemObject(visibilitiesBuffer, visibilities);

@@ -8,14 +8,15 @@
 
 #include <mma.h>
 
-#define NR_BASELINES		(NR_RECEIVERS * (NR_RECEIVERS + 1) / 2)
-#define ALIGN(A,N)		(((A)+(N)-1)/(N)*(N))
+#define NR_BASELINES		 (NR_RECEIVERS * (NR_RECEIVERS + 1) / 2)
+#define ALIGN(A,N)		 (((A)+(N)-1)/(N)*(N))
 
-#define NR_TIMES_PER_BLOCK	(128 / (NR_BITS))
-#define NR_RECEIVERS_PER_TCM_X	((NR_BITS) == 4 ? 2 : 4)
-#define NR_RECEIVERS_PER_TCM_Y	8
+#define NR_TIMES_PER_BLOCK	 (128 / (NR_BITS))
+#define NR_RECEIVERS_PER_TCM_X	 ((NR_BITS) == 4 ? 2 : 4)
+#define NR_RECEIVERS_PER_TCM_Y	 8
+#define NR_RECEIVERS_PER_BLOCK_X (NR_RECEIVERS_PER_BLOCK == 64 ? 32 : NR_RECEIVERS_PER_BLOCK)
 
-#define COMPLEX			2
+#define COMPLEX			 2
 
 #if __CUDA_ARCH__ < (NR_BITS == 4 ? 730 : NR_BITS == 8 ? 720 : NR_BITS == 16 ? 700 : 0)
 #error this architecture has no suitable tensor cores
@@ -267,12 +268,12 @@ template <typename T> __device__ inline void storeVisibility(Visibilities visibi
 
 template <typename T> __device__ inline void storeVisibility(Visibilities visibilities, unsigned channel, unsigned baseline, unsigned recvY, unsigned recvX, unsigned tcY, unsigned tcX, unsigned polY, unsigned polX, bool skipCheckY, bool skipCheckX, T sumR, T sumI)
 {
-  if ((skipCheckX || recvX + tcX <= recvY + tcY) && (skipCheckY || recvY + tcY < NR_RECEIVERS))
-    storeVisibility(visibilities, channel, baseline + tcY * recvY + tcY * (tcY + 1) / 2 + tcX, polY, polX, make_complex(sumR, sumI));
+  if ((skipCheckY || recvY + tcY <= recvX + tcX) && (skipCheckX || recvX + tcX < NR_RECEIVERS))
+    storeVisibility(visibilities, channel, baseline + tcX * recvX + tcX * (tcX + 1) / 2 + tcY, polY, polX, make_complex(sumR, sumI));
 }
 
 
-__device__ inline void storeVisibilities(Visibilities visibilities, unsigned channel, unsigned firstReceiverY, unsigned firstReceiverX, unsigned recvYoffset, unsigned recvXoffset, unsigned y, unsigned x, bool skipCheckY, bool skipCheckX, const Sum &sum, ScratchSpace scratchSpace[], unsigned warp)
+__device__ inline void storeVisibilities(Visibilities visibilities, unsigned channel, unsigned firstReceiverY, unsigned firstReceiverX, unsigned y, unsigned x, bool skipCheckY, bool skipCheckX, const Sum &sum, ScratchSpace scratchSpace[], unsigned warp)
 {
 #if defined PORTABLE
  store_matrix_sync(&scratchSpace[warp][0][0][0][0].x, sum, NR_RECEIVERS_PER_TCM_X * NR_POLARIZATIONS * COMPLEX, mem_row_major);
@@ -297,11 +298,11 @@ __device__ inline void storeVisibilities(Visibilities visibilities, unsigned cha
   unsigned _x       = threadIdx.x & 3;
 #endif
 
-  unsigned recvY    = firstReceiverY + recvYoffset + NR_RECEIVERS_PER_TCM_Y * y + _y;
-  unsigned recvX    = firstReceiverX + recvXoffset + NR_RECEIVERS_PER_TCM_X * x + _x;
-  unsigned baseline = (recvY * (recvY + 1) / 2) + recvX;
+  unsigned recvY    = firstReceiverY + NR_RECEIVERS_PER_TCM_Y * y + _y;
+  unsigned recvX    = firstReceiverX + NR_RECEIVERS_PER_TCM_X * x + _x;
+  unsigned baseline = (recvX * (recvX + 1) / 2) + recvY;
 
-  if ((skipCheckX || recvX <= recvY) && (skipCheckY || recvY < NR_RECEIVERS))
+  if ((skipCheckY || recvY <= recvX) && (skipCheckX || recvX < NR_RECEIVERS))
 #if NR_BITS == 4
     for (unsigned polX = 0; polX < NR_POLARIZATIONS; polX ++)
       visibilities[channel][baseline][polY][polX] = scratchSpace[warp][_y][polY][_x][polX];
@@ -312,18 +313,18 @@ __device__ inline void storeVisibilities(Visibilities visibilities, unsigned cha
 #endif
 #else
 #if __CUDA_ARCH__ == 700 || (__CUDA_ARCH__ == 720 && NR_BITS == 16)
-  unsigned recvY    = firstReceiverY + recvYoffset + NR_RECEIVERS_PER_TCM_Y * y + ((threadIdx.x >> 3) & 2) + (threadIdx.x & 4);
-  unsigned recvX    = firstReceiverX + recvXoffset + NR_RECEIVERS_PER_TCM_X * x + ((threadIdx.x >> 2) & 2);
+  unsigned recvY    = firstReceiverY + NR_RECEIVERS_PER_TCM_Y * y + ((threadIdx.x >> 3) & 2) + (threadIdx.x & 4);
+  unsigned recvX    = firstReceiverX + NR_RECEIVERS_PER_TCM_X * x + ((threadIdx.x >> 2) & 2);
   unsigned polY     = threadIdx.x & 1;
   unsigned polX     = (threadIdx.x >> 1) & 1;
 #elif (__CUDA_ARCH__ == 720 && NR_BITS == 8) || __CUDA_ARCH__ == 750 || __CUDA_ARCH__ == 800 || __CUDA_ARCH__ == 860
-  unsigned recvY    = firstReceiverY + recvYoffset + NR_RECEIVERS_PER_TCM_Y * y + ((threadIdx.x >> 3) & 3);
-  unsigned recvX    = firstReceiverX + recvXoffset + NR_RECEIVERS_PER_TCM_X * x + ((threadIdx.x >> 1) & 1);
+  unsigned recvY    = firstReceiverY + NR_RECEIVERS_PER_TCM_Y * y + ((threadIdx.x >> 3) & 3);
+  unsigned recvX    = firstReceiverX + NR_RECEIVERS_PER_TCM_X * x + ((threadIdx.x >> 1) & 1);
   unsigned polY     = (threadIdx.x >> 2) & 1;
   unsigned polX     = threadIdx.x & 1;
 #endif
 
-  unsigned baseline = (recvY * (recvY + 1) / 2) + recvX;
+  unsigned baseline = (recvX * (recvX + 1) / 2) + recvY;
 
 #if __CUDA_ARCH__ == 700 || (__CUDA_ARCH__ == 720 && NR_BITS == 16)
   storeVisibility(visibilities, channel, baseline, recvY, recvX, 0, 0, polY, polX, skipCheckY, skipCheckX, sum.x[0], sum.x[1]);
@@ -361,9 +362,9 @@ template <bool fullTriangle> __device__ void doCorrelateTriangle(Visibilities vi
 
   const uchar2 offsets[] = {
     make_uchar2( 0,  0),
-    make_uchar2( 0, 16),
-    make_uchar2( 0, 40),
-    make_uchar2(24, 40),
+    make_uchar2(16,  0),
+    make_uchar2(40,  0),
+    make_uchar2(40, 24),
   };
 
   unsigned recvXoffset = offsets[warp].x;
@@ -444,7 +445,7 @@ template <bool fullTriangle> __device__ void doCorrelateTriangle(Visibilities vi
 	  for (unsigned y = 0; y < 2; y ++) {
 	    load_matrix_sync(aFrag, &bSamples[buffer][/*recvYoffset*/ 24 * z + NR_RECEIVERS_PER_TCM_Y * y][0][0][minorTime][0], sizeof(bSamples[0][0][0]) * 8 / NR_BITS);
 
-	    for (unsigned x = 0; x < 8 * (y + 1) / NR_RECEIVERS_PER_TCM_X; x ++, i ++)
+	    for (unsigned x = 8 * y / NR_RECEIVERS_PER_TCM_X; x < 16 / NR_RECEIVERS_PER_TCM_X; x ++, i ++)
 	      mma_sync(sum[i], aFrag, bFrag[x], sum[i]);
 	  }
 	}
@@ -459,21 +460,19 @@ template <bool fullTriangle> __device__ void doCorrelateTriangle(Visibilities vi
   if (warp != 0)
     for (unsigned y = 0, i = 0; y < nrFragmentsY; y ++)
       for (unsigned x = 0; x < nrFragmentsX; x ++, i ++)
-	storeVisibilities(visibilities, channel, firstReceiver, firstReceiver, recvYoffset, recvXoffset, y, x, fullTriangle, y > 0 || x < (NR_BITS == 4 ? 8 : 4), sum[i], scratchSpace, warp);
+	storeVisibilities(visibilities, channel, firstReceiver + recvYoffset, firstReceiver + recvXoffset, y, x, y < 2 || x > (NR_BITS == 4 ? 4 : 2), fullTriangle, sum[i], scratchSpace, warp);
   else
     for (unsigned z = 0, i = 0; z < 3; z ++)
       for (unsigned y = 0; y < 2; y ++)
-	for (unsigned x = 0; x < (NR_BITS == 4 ? 4 : 2) * (y + 1); x ++, i ++)
-	  storeVisibilities(visibilities, channel, firstReceiver, firstReceiver, 24 * z, 24 * z, y, x, fullTriangle, x < (NR_BITS == 4 ? 4 : 2) * y, sum[i], scratchSpace, warp);
+	for (unsigned x = 8 * y / NR_RECEIVERS_PER_TCM_X; x < 16 / NR_RECEIVERS_PER_TCM_X; x ++, i ++)
+	  storeVisibilities(visibilities, channel, firstReceiver + 24 * z, firstReceiver + 24 * z, y, x, (y + 1) * NR_RECEIVERS_PER_TCM_Y <= x * NR_RECEIVERS_PER_TCM_X, fullTriangle, sum[i], scratchSpace, warp);
 }
 
 #endif
 
 
-template <unsigned nrFragmentsY, bool skipLoadYcheck, bool skipLoadXcheck, bool skipStoreYcheck, bool skipStoreXcheck> __device__ void doCorrelateRectangle(Visibilities visibilities, const Samples samples, unsigned firstReceiverY, unsigned firstReceiverX, SharedData<>::Asamples &aSamples, SharedData<NR_RECEIVERS_PER_BLOCK == 64 ? 32 : NR_RECEIVERS_PER_BLOCK>::Bsamples &bSamples, ScratchSpace scratchSpace[NR_WARPS])
+template <unsigned nrFragmentsY, unsigned nrFragmentsX, bool skipLoadYcheck, bool skipLoadXcheck, bool skipStoreYcheck, bool skipStoreXcheck> __device__ void doCorrelateRectangle(Visibilities visibilities, const Samples samples, unsigned firstReceiverY, unsigned firstReceiverX, SharedData<>::Asamples &aSamples, SharedData<NR_RECEIVERS_PER_BLOCK_X>::Bsamples &bSamples, ScratchSpace scratchSpace[NR_WARPS])
 {
-  const unsigned nrFragmentsX = NR_RECEIVERS_PER_BLOCK / NR_RECEIVERS_PER_TCM_X / 2 / (NR_RECEIVERS_PER_BLOCK == 64 ? 2 : 1);
-
   Sum sum[nrFragmentsY][nrFragmentsX];
 
   for (unsigned y = 0; y < nrFragmentsY; y ++)
@@ -611,7 +610,7 @@ template <unsigned nrFragmentsY, bool skipLoadYcheck, bool skipLoadXcheck, bool 
 
   for (unsigned y = 0; y < nrFragmentsY; y ++)
     for (unsigned x = 0; x < nrFragmentsX; x ++)
-      storeVisibilities(visibilities, channel, firstReceiverY, firstReceiverX, recvYoffset, recvXoffset, y, x, skipStoreYcheck, skipStoreXcheck, sum[y][x], scratchSpace, tid / warpSize);
+      storeVisibilities(visibilities, channel, firstReceiverY + recvYoffset, firstReceiverX + recvXoffset, y, x, skipStoreYcheck, skipStoreXcheck, sum[y][x], scratchSpace, tid / warpSize);
 }
 
 
@@ -619,25 +618,31 @@ extern "C" __global__
 __launch_bounds__(NR_WARPS * 32, NR_RECEIVERS_PER_BLOCK == 32 ? 4 : 2)
 void correlate(Visibilities visibilities, const Samples samples)
 {
-  const unsigned nrFragmentsY = NR_RECEIVERS_PER_BLOCK / NR_RECEIVERS_PER_TCM_Y / 2;
+  constexpr unsigned nrFragmentsX = NR_RECEIVERS_PER_BLOCK_X / NR_RECEIVERS_PER_TCM_X / 2;
+  constexpr unsigned nrFragmentsY = NR_RECEIVERS_PER_BLOCK   / NR_RECEIVERS_PER_TCM_Y / 2;
 
   unsigned block = blockIdx.x;
 
 #if NR_RECEIVERS_PER_BLOCK == 32 || NR_RECEIVERS_PER_BLOCK == 48
-  unsigned blockY = (unsigned) (sqrtf(8 * block + 1) - .99999f) / 2;
-  unsigned blockX = block - blockY * (blockY + 1) / 2;
+  unsigned blockX = (unsigned) (sqrtf(8 * block + 1) - .99999f) / 2;
+  unsigned blockY = block - blockX * (blockX + 1) / 2;
+  unsigned firstReceiverY = blockY * NR_RECEIVERS_PER_BLOCK;
   unsigned firstReceiverX = blockX * NR_RECEIVERS_PER_BLOCK;
 #elif NR_RECEIVERS_PER_BLOCK == 64
-  unsigned blockY = (unsigned) sqrtf(block);
-  unsigned blockX = block - blockY * blockY;
-  unsigned firstReceiverX = blockX * (NR_RECEIVERS_PER_BLOCK / 2);
+  unsigned blockX = (unsigned) sqrtf(block);
+  unsigned blockY = block - blockX * blockX;
+  unsigned firstReceiverY = blockY / 2 * NR_RECEIVERS_PER_BLOCK;
+  //unsigned firstReceiverX = (2 * blockX + blockY % 2) * (NR_RECEIVERS_PER_BLOCK / 2);
+  unsigned firstReceiverX = blockX * NR_RECEIVERS_PER_BLOCK + (blockY % 2) * NR_RECEIVERS_PER_BLOCK / 2;
+
+  if (firstReceiverX >= NR_RECEIVERS)
+    return;
 #endif
-  unsigned firstReceiverY = blockY * NR_RECEIVERS_PER_BLOCK;
 
   union shared {
     struct {
       SharedData<>::Asamples aSamples;
-      SharedData<NR_RECEIVERS_PER_BLOCK == 64 ? 32 : NR_RECEIVERS_PER_BLOCK>::Bsamples bSamples;
+      SharedData<NR_RECEIVERS_PER_BLOCK_X>::Bsamples bSamples;
     } rectangle;
     struct {
       SharedData<>::Bsamples samples;
@@ -653,19 +658,19 @@ void correlate(Visibilities visibilities, const Samples samples)
 
   if (firstReceiverX == firstReceiverY)
 #if NR_RECEIVERS_PER_BLOCK == 32 || NR_RECEIVERS_PER_BLOCK == 48
-    doCorrelateRectangle<nrFragmentsY, NR_RECEIVERS % NR_RECEIVERS_PER_BLOCK == 0, NR_RECEIVERS % NR_RECEIVERS_PER_BLOCK == 0, NR_RECEIVERS % NR_RECEIVERS_PER_BLOCK == 0, false>(visibilities, samples, firstReceiverY, firstReceiverX, u.rectangle.aSamples, u.rectangle.bSamples, u.scratchSpace);
+    doCorrelateRectangle<nrFragmentsY, nrFragmentsX, NR_RECEIVERS % NR_RECEIVERS_PER_BLOCK == 0, NR_RECEIVERS % NR_RECEIVERS_PER_BLOCK == 0, false, NR_RECEIVERS % NR_RECEIVERS_PER_BLOCK == 0>(visibilities, samples, firstReceiverY, firstReceiverX, u.rectangle.aSamples, u.rectangle.bSamples, u.scratchSpace); // TODO: smaller nrFragments[XY]
 #elif NR_RECEIVERS_PER_BLOCK == 64
     if (NR_RECEIVERS % NR_RECEIVERS_PER_BLOCK != 0 && (NR_RECEIVERS < NR_RECEIVERS_PER_BLOCK || firstReceiverX >= NR_RECEIVERS / NR_RECEIVERS_PER_BLOCK * NR_RECEIVERS_PER_BLOCK))
       doCorrelateTriangle<false>(visibilities, samples, firstReceiverX, 2 * threadIdx.z + threadIdx.y, 64 * threadIdx.z + 32 * threadIdx.y + threadIdx.x, u.triangle.samples, u.scratchSpace);
     else
       doCorrelateTriangle<true>(visibilities, samples, firstReceiverX, 2 * threadIdx.z + threadIdx.y, 64 * threadIdx.z + 32 * threadIdx.y + threadIdx.x, u.triangle.samples, u.scratchSpace);
 #endif
-#if NR_RECEIVERS % NR_RECEIVERS_PER_BLOCK != 0
-  else if (NR_RECEIVERS < NR_RECEIVERS_PER_BLOCK || firstReceiverY >= NR_RECEIVERS / NR_RECEIVERS_PER_BLOCK * NR_RECEIVERS_PER_BLOCK)
-    doCorrelateRectangle<(NR_RECEIVERS % NR_RECEIVERS_PER_BLOCK + 2 * NR_RECEIVERS_PER_TCM_Y - 1) / NR_RECEIVERS_PER_TCM_Y / 2, false, true, NR_RECEIVERS % (2 * NR_RECEIVERS_PER_TCM_Y) == 0, true>(visibilities, samples, firstReceiverY, firstReceiverX, u.rectangle.aSamples, u.rectangle.bSamples, u.scratchSpace);
+#if NR_RECEIVERS % NR_RECEIVERS_PER_BLOCK_X != 0
+  else if (firstReceiverX >= NR_RECEIVERS / NR_RECEIVERS_PER_BLOCK_X * NR_RECEIVERS_PER_BLOCK_X)
+    doCorrelateRectangle<nrFragmentsY, (NR_RECEIVERS % NR_RECEIVERS_PER_BLOCK_X + 2 * NR_RECEIVERS_PER_TCM_X - 1) / (2 * NR_RECEIVERS_PER_TCM_X), true, false, true, NR_RECEIVERS % (2 * NR_RECEIVERS_PER_TCM_X) == 0>(visibilities, samples, firstReceiverY, firstReceiverX, u.rectangle.aSamples, u.rectangle.bSamples, u.scratchSpace);
 #endif
   else
-    doCorrelateRectangle<nrFragmentsY, true, true, true, true>(visibilities, samples, firstReceiverY, firstReceiverX, u.rectangle.aSamples, u.rectangle.bSamples, u.scratchSpace);
+    doCorrelateRectangle<nrFragmentsY, nrFragmentsX, true, true, true, true>(visibilities, samples, firstReceiverY, firstReceiverX, u.rectangle.aSamples, u.rectangle.bSamples, u.scratchSpace);
 
 #if 0
   if (threadIdx.x == 0 && threadIdx.y == 0 && threadIdx.z == 0) {
