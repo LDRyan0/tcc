@@ -6,8 +6,8 @@ than regular GPU cores. Its primary use is to combine the signals of (many)
 receivers of a radio telescope. The library can be used in any FX correlator,
 but is not a full correlator application: it only computes the correlations.
 The rest of the application should take care of I/O, filtering, etc.
-For more information, see the paper "The Tensor-Core Correlator" that will
-appear in _Astronomy and Astrophysics_ soon.
+For more information, see the paper (John W. Romein, The Tensor-Core Correlator,
+_Astronomy and Astrophysics_, 656(A32), pages 1-4, December 2021).
 
 ## Brief overview on how to use the Tensor-Core Correlator library:
 
