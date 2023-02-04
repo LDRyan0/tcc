@@ -1,0 +1,7 @@
+# ignore all binary exectuables
+!*.*
+!*/
+
+*.d
+*.o
+*.so*
