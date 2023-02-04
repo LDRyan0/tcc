@@ -32,14 +32,17 @@ OPENCL_TEST_SOURCES=	test/OpenCLCorrelatorTest/OpenCLCorrelatorTest.cc
 
 SIMPLE_EXAMPLE_SOURCES=	test/SimpleExample/SimpleExample.cu
 
+BENCHMARK_SOURCES= 		test/Benchmark/Benchmark.cu
 
 LIBTCC_OBJECTS=		$(LIBTCC_SOURCES:%.cc=%.o) libtcc/TCCorrelator.o
 SIMPLE_EXAMPLE_OBJECTS=	$(SIMPLE_EXAMPLE_SOURCES:%.cu=%.o)
+BENCHMARK_OBJECTS=		$(BENCHMARK_SOURCES:%.cu=%.o)
 CORRELATOR_TEST_OBJECTS=$(CORRELATOR_TEST_SOURCES:%.cc=%.o)
 OPENCL_TEST_OBJECTS=	$(OPENCL_TEST_SOURCES:%.cc=%.o)
 
 OBJECTS=		$(LIBTCC_OBJECTS)\
 			$(SIMPLE_EXAMPLE_OBJECTS)\
+			$(BENCHMARK_OBJECTS)\
 			$(CORRELATOR_TEST_OBJECTS)\
 			$(OPENCL_TEST_OBJECTS)
 
@@ -48,6 +51,7 @@ SHARED_OBJECTS=		libtcc/libtcc.so libtcc/libtcc.so.$(VERSION)
 DEPENDENCIES=		$(OBJECTS:%.o=%.d)
 
 EXECUTABLES=		test/SimpleExample/SimpleExample\
+			test/Benchmark/Benchmark\
 			test/CorrelatorTest/CorrelatorTest
 
 ifneq			("$(wildcard $(CUDA_INCLUDE)/CL/cl.hpp)", "")
@@ -103,6 +107,9 @@ libtcc/libtcc.so.$(VERSION):			$(LIBTCC_OBJECTS) $(CUDA_WRAPPERS_LIB)
 
 test/SimpleExample/SimpleExample:		$(SIMPLE_EXAMPLE_OBJECTS) libtcc/libtcc.so
 			$(NVCC) $(NVCCFLAGS) -o $@ $(SIMPLE_EXAMPLE_OBJECTS) -Xlinker -rpath=$(CUDA_WRAPPERS_DIR) -Llibtcc -ltcc $(LIBRARIES)
+
+test/Benchmark/Benchmark:				$(BENCHMARK_OBJECTS) libtcc/libtcc.so
+			$(NVCC) $(NVCCFLAGS) -o $@ $(BENCHMARK_OBJECTS) -Xlinker -rpath=$(CUDA_WRAPPERS_DIR) -Llibtcc -ltcc $(LIBRARIES)
 
 test/CorrelatorTest/CorrelatorTest:		$(CORRELATOR_TEST_OBJECTS) libtcc/libtcc.so
 			$(CXX) $(CXXFLAGS) -o $@ $(CORRELATOR_TEST_OBJECTS) -Wl,-rpath=$(CUDA_WRAPPERS_DIR) -Llibtcc -ltcc $(LIBRARIES)
