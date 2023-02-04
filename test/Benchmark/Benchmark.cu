@@ -44,7 +44,7 @@ int main(int argc, char* argv[]) {
 		Samples *samples;
 		Visibilities *visibilities;
 		
-		// create steram and allocate memory 
+		// create stream and allocate memory 
 		checkCudaCall(cudaStreamCreate(&stream));
 		checkCudaCall(cudaMallocManaged(&samples, sizeof(Samples)));
 		checkCudaCall(cudaMallocManaged(&visibilities, sizeof(Visibilities)));
